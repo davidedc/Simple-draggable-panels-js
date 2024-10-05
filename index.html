@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Draggable Panels</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .panel {
+            position: absolute;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            background-color: #0056b3;
+            color: white;
+            padding: 10px;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-content {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        .panel-content > * {
+            margin-bottom: 10px;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .close-btn, .collapse-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+        .resize-handle {
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 0 20px 20px;
+            border-color: transparent transparent #007bff transparent;
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            cursor: nwse-resize;
+        }
+        .collapsed .panel-content, .collapsed .resize-handle {
+            display: none;
+        }
+        .collapsed {
+            height: auto !important;
+        }
+        .top-panel {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .top-panel .panel-header {
+            background-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Draggable Panels Example</h1>
+    <div id="output"></div>
+
+    <script>
+        let highestZIndex = 1;
+        let panelCount = 2;
+
+        function createPanel(config, position) {
+            const panel = document.createElement('div');
+            panel.className = 'panel';
+            panel.style.left = position.x + 'px';
+            panel.style.top = position.y + 'px';
+            panel.style.zIndex = highestZIndex++;
+            panel.style.width = '300px';  // Set an initial width
+            panel.style.height = '400px'; // Set an initial height
+
+            const header = document.createElement('div');
+            header.className = 'panel-header';
+            header.innerHTML = `
+                <span>${config.title}</span>
+                <div>
+                    <button class="collapse-btn">−</button>
+                    <button class="close-btn">×</button>
+                </div>
+            `;
+            panel.appendChild(header);
+
+            const content = document.createElement('div');
+            content.className = 'panel-content';
+            panel.appendChild(content);
+
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            panel.appendChild(resizeHandle);
+
+            config.inputs.forEach(input => {
+                const wrapper = document.createElement('div');
+                const label = document.createElement('label');
+                label.textContent = input.label;
+                wrapper.appendChild(label);
+
+                let element;
+                switch (input.type) {
+                    case 'range':
+                        element = document.createElement('input');
+                        element.type = 'range';
+                        element.min = input.min;
+                        element.max = input.max;
+                        element.value = input.initial;
+                        break;
+                    case 'checkbox':
+                        element = document.createElement('input');
+                        element.type = 'checkbox';
+                        element.checked = input.initial;
+                        break;
+                    case 'color':
+                        element = document.createElement('input');
+                        element.type = 'color';
+                        element.value = input.initial;
+                        break;
+                    case 'select':
+                        element = document.createElement('select');
+                        input.options.forEach(option => {
+                            const optionElement = document.createElement('option');
+                            optionElement.value = option;
+                            optionElement.textContent = option;
+                            element.appendChild(optionElement);
+                        });
+                        element.value = input.initial;
+                        break;
+                    case 'button':
+                        element = document.createElement('button');
+                        element.textContent = input.label;
+                        element.onclick = input.action;
+                        break;
+                }
+
+                if (element) {
+                    element.addEventListener('input', updateOutput);
+                    wrapper.appendChild(element);
+                    content.appendChild(wrapper);
+                }
+            });
+
+            document.body.appendChild(panel);
+
+            // Dragging functionality
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+
+            header.addEventListener('mousedown', startDragging);
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDragging);
+
+            function startDragging(e) {
+                if (e.target.classList.contains('close-btn') || e.target.classList.contains('collapse-btn')) return;
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(panel.style.left);
+                startTop = parseInt(panel.style.top);
+                e.preventDefault(); // Prevent text selection
+                bringToFront(panel);
+            }
+
+            function drag(e) {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                panel.style.left = (startLeft + dx) + 'px';
+                panel.style.top = (startTop + dy) + 'px';
+            }
+
+            function stopDragging() {
+                isDragging = false;
+            }
+
+            // Resizing functionality
+            let isResizing = false;
+            resizeHandle.addEventListener('mousedown', startResizing);
+            document.addEventListener('mousemove', resize);
+            document.addEventListener('mouseup', stopResizing);
+
+            function startResizing(e) {
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startWidth = parseInt(document.defaultView.getComputedStyle(panel).width, 10);
+                startHeight = parseInt(document.defaultView.getComputedStyle(panel).height, 10);
+                e.preventDefault();
+                bringToFront(panel);
+            }
+
+            function resize(e) {
+                if (!isResizing) return;
+                const width = Math.max(200, startWidth + (e.clientX - startX));
+                const height = Math.max(100, startHeight + (e.clientY - startY));
+                panel.style.width = width + 'px';
+                panel.style.height = height + 'px';
+            }
+
+            function stopResizing() {
+                isResizing = false;
+            }
+
+            // Close functionality
+            const closeBtn = header.querySelector('.close-btn');
+            closeBtn.addEventListener('click', () => {
+                panel.remove();
+                updateOutput();
+            });
+
+            // Collapse functionality
+            const collapseBtn = header.querySelector('.collapse-btn');
+            collapseBtn.addEventListener('click', () => {
+                panel.classList.toggle('collapsed');
+                collapseBtn.textContent = panel.classList.contains('collapsed') ? '+' : '−';
+            });
+
+            // Bring to front on click
+            panel.addEventListener('mousedown', function(e) {
+                if (!e.target.classList.contains('close-btn') && !e.target.classList.contains('collapse-btn')) {
+                    bringToFront(this);
+                }
+            });
+
+            return panel;
+        }
+
+        function bringToFront(panel) {
+            document.querySelectorAll('.panel').forEach(p => {
+                p.classList.remove('top-panel');
+                p.style.zIndex = p === panel ? highestZIndex++ : p.style.zIndex;
+            });
+            panel.classList.add('top-panel');
+        }
+
+        function spawnNewPanel() {
+            panelCount++;
+            const newPanel = createPanel({
+                title: `Panel ${panelCount}`,
+                inputs: [
+                    {type: 'range', label: 'New Slider', min: 0, max: 100, initial: 50},
+                    {type: 'checkbox', label: 'New Toggle', initial: false},
+                    {type: 'color', label: 'New Color', initial: '#0000ff'}
+                ]
+            }, {
+                x: Math.random() * (window.innerWidth - 300) + 50,
+                y: Math.random() * (window.innerHeight - 300) + 50
+            });
+
+            bringToFront(newPanel);  // Bring the new panel to the front
+            updateOutput();
+        }
+
+        const panel1 = createPanel({
+            title: 'Panel 1',
+            inputs: [
+                {type: 'range', label: 'Slider', min: 0, max: 100, initial: 50},
+                {type: 'checkbox', label: 'Toggle', initial: true},
+                {type: 'color', label: 'Color Picker', initial: '#ff0000'},
+                {type: 'button', label: 'Click Me', action: () => alert('Button clicked!')},
+                {type: 'button', label: 'Spawn New Panel', action: spawnNewPanel},
+                {type: 'range', label: 'Extra Slider 1', min: 0, max: 100, initial: 25},
+                {type: 'range', label: 'Extra Slider 2', min: 0, max: 100, initial: 75},
+                {type: 'checkbox', label: 'Extra Toggle', initial: false},
+                {type: 'select', label: 'Extra Options', options: ['Option A', 'Option B', 'Option C'], initial: 'Option B'}
+            ]
+        }, {x: 20, y: 100});
+
+        const panel2 = createPanel({
+            title: 'Panel 2',
+            inputs: [
+                {type: 'select', label: 'Options', options: ['Option 1', 'Option 2', 'Option 3'], initial: 'Option 1'},
+                {type: 'range', label: 'Another Slider', min: 0, max: 100, initial: 75},
+                {type: 'checkbox', label: 'Another Toggle', initial: false},
+                {type: 'color', label: 'Another Color', initial: '#00ff00'}
+            ]
+        }, {x: 330, y: 100});
+
+        function updateOutput() {
+            const output = document.getElementById('output');
+            const panels = document.querySelectorAll('.panel');
+            const state = {};
+
+            panels.forEach((panel, index) => {
+                const panelState = {};
+                panel.querySelectorAll('input, select').forEach(input => {
+                    if (input.type === 'checkbox') {
+                        panelState[input.previousSibling.textContent] = input.checked;
+                    } else if (input.type !== 'button') {
+                        panelState[input.previousSibling.textContent] = input.value;
+                    }
+                });
+                state[panel.querySelector('.panel-header span').textContent] = panelState;
+            });
+
+            output.innerHTML = `
+                <h2>Current State:</h2>
+                <pre>${JSON.stringify(state, null, 2)}</pre>
+            `;
+        }
+
+        updateOutput();
+        bringToFront(panel2);  // Bring Panel 2 to the front initially
+    </script>
+</body>
+</html>
